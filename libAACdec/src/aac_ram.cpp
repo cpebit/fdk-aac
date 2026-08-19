@@ -100,6 +100,18 @@ amm-info@iis.fraunhofer.de
 
 *******************************************************************************/
 
+/*
+ * NOTICE OF MODIFICATION
+ *
+ * This file has been changed from the Fraunhofer FDK AAC Codec Library as
+ * distributed. Modified 2026-08-19: the WorkBufferCore2 and WorkBufferCore5
+ * work buffers are sized for two channels rather than eight, as described
+ * at AAW_DEC_MAX_CHANNELS below. No other behaviour is altered.
+ *
+ * Per section 2 of the software license above, this is a Third-Party
+ * Modified Version of the Fraunhofer FDK AAC Codec Library for Android.
+ */
+
 #include "aac_ram.h"
 #include "aac_rom.h"
 
@@ -107,6 +119,26 @@ amm-info@iis.fraunhofer.de
 #define WORKBUFFER2_TAG 1
 #define WORKBUFFER5_TAG 6
 #define WORKBUFFER6_TAG 7
+
+/*
+ * The widest channel configuration these work buffers are built for.
+ *
+ * Upstream sizes them at 8, which is what a general-purpose decoder needs.
+ * WorkBufferCore5 alone is then (8 * 4096 * 2) FIXP_DBL - 256 KB - and
+ * WorkBufferCore2 another 32 KB, all of it taken when the decoder opens
+ * and none of it usable by anything else.
+ *
+ * This build decodes CarPlay audio, which is stereo at the most, and it
+ * decodes it on a board where the whole heap is under a megabyte. Two
+ * streams' worth of 8-channel buffers does not fit beside a screen buffer
+ * and an audio ring, and the way that failed was not a clean allocation
+ * error - it was the session dying with the heap down to 2 KB free.
+ *
+ * Two is safe here rather than merely smaller: cp_aac_open refuses any
+ * channel count above two before a decoder is ever configured, so a
+ * stream that would need these buffers wider cannot reach them.
+ */
+#define AAW_DEC_MAX_CHANNELS 2
 
 /*! The structure AAC_DECODER_INSTANCE is the top level structure holding all
    decoder configurations, handles and structs.
@@ -161,7 +193,8 @@ C_ALLOC_MEM2(TimeDataFlush, PCM_DEC, TIME_DATA_FLUSH_SIZE, (8))
 
 /* Take into consideration to make use of the WorkBufferCore[3/4] for decoder
  * configurations with more than 2 channels */
-C_ALLOC_MEM_OVERLAY(WorkBufferCore2, FIXP_DBL, ((8) * 1024), SECT_DATA_L2,
+C_ALLOC_MEM_OVERLAY(WorkBufferCore2, FIXP_DBL,
+                    ((AAW_DEC_MAX_CHANNELS) * 1024), SECT_DATA_L2,
                     WORKBUFFER2_TAG)
 
 C_ALLOC_MEM_OVERLAY(WorkBufferCore6, SCHAR,
@@ -173,5 +206,6 @@ C_ALLOC_MEM_OVERLAY(WorkBufferCore1, CWorkBufferCore1, 1, SECT_DATA_L1,
                     WORKBUFFER1_TAG)
 
 /* double buffer size needed for de-/interleaving */
-C_ALLOC_MEM_OVERLAY(WorkBufferCore5, PCM_DEC, (8) * (1024 * 4) * 2,
+C_ALLOC_MEM_OVERLAY(WorkBufferCore5, PCM_DEC,
+                    (AAW_DEC_MAX_CHANNELS) * (1024 * 4) * 2,
                     SECT_DATA_EXTERN, WORKBUFFER5_TAG)
